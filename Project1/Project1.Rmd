@@ -1,0 +1,346 @@
+---
+title: "BIO214 Project1"
+output:
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+  html_document:
+    theme: united
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+## 1. Project Description.
+
+### Assessment for BIO214 in General:
+
+Due to the change of the school's returning arrangement, the assessments for BIO214 is altered into a contingency plan. Currently, BIO214 will be assessed by 5 programming projects, and each one will contribute to 20% of the final mark. 
+
+All of the programming projects in BIO214 will be assessed by the following two criteria: 
+
+1. The correctness of the computational output & figures (50%)
+2. The quality of the written answers for the short answer question (50%)
+
+If a question demands a short written answer, it will be clearly labeled in the assignment document by SAQ + number, and you should type your answer on the line below it. For all the coding and biological questions raised in the assignments, you are encouraged to solve them with active online searching.
+
+The projects are expected to be submitted in the form of knitted HTML files of the project Rmarkdown document (end with .Rmd).
+
+For example, after finishing the project on this Rmd file, you can click the knit button on the upper right corner of Rstudio. If your code can run through without any error, you will then get the HTML document under your project directory on the server. 
+
+When the project deadline is reached, I will check your project directories on the server for the HTML files, and I will treat the one named by `ProjectX.html` as your final submission.
+
+Submission using word file is also OK, but please remember to include all of the codes and programming outputs in the word file. If you decide to use word files, please send your finished project document to my email: `zhen.wei01@xjtlu.edu.cn`
+
+### The Aim of Project1:
+
+In project1, your target is to screen for the thermal stable secondary structures on the transcript of human genome assembly hg19. After the predictions are made by RNAfold, you will map the predicted RNA structure from the transcript coordinate into the genome coordinate. Further analysis and statistical tests will be conducted to compare the sequence content of different RNA structure regions on the genome. Please refer to the instructions at the beginning of each question for the detailed project information.
+
+## 2. Load the hg19 Genome and TxDb:
+
+The first step of this project is to load the transcript annotation and genome sequence for human genome assembly hg19.
+
+To achieve this, load the TxDb and BSgenome libraries for hg19 with `library()`.
+Then, rename the BSgenome and TxDb object into the R variables: `genome` and `txdb`.
+
+Please write your code in the specified area in the code chunk below. 
+
+Furthermore, you could choose to refer to the hint comments above the code region, particularly when you find this question is difficult for you.
+
+```{r}
+## === Hint for code, fill the xs ============= ##
+#library(BSgenome.xxxxx.UCSC.xxx)
+#library(TxDb.xxxxx.UCSC.xxx.knownGene)
+#genome <- BSgenome.xxxxxx.UCSC.xxx
+#txdb <- TxDb.xxxxxx.UCSC.xxx.knownGene
+
+## ===== Enter Your code below  =============== ##
+library(BSgenome.Hsapiens.UCSC.hg19)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+genome <- BSgenome.Hsapiens.UCSC.hg19
+txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
+```
+
+Check that if 'txdb' and 'genome' are based on the hg19 assembly:
+```{r}
+txdb
+genome
+```
+
+
+## 3. Extract the Exon Ranges Grouped by Transcript from 'txdb':
+
+The next step is to extract the exon regions for the RNA transcripts encoded in the hg19 transcript annotation.
+
+You should use function `exonsBy()`, and set the argument `by = "tx"`,
+also, please set the argument `use.names = TRUE`.
+
+The input for `exonsBy()` should be the TxDb object for transcript annotation,
+the output for `exonsBy()` is a `GRangesList` of exons grouped by the levels defined by `by = `
+Store the output into the R variable named with `transcripts`. 
+
+```{r}
+## === Hint code, fill the xs  ============= ##
+#transcripts <- exonsBy(xxx,xxxx,xxxxx)
+## ===== Enter Your code below  ============ ##
+transcripts <- exonsBy(txdb,by = "tx",use.names = TRUE)
+```
+
+Check the layout of the resulting `GRangesList` object:
+```{r}
+transcripts
+```
+
+You should now find the ranges of exons grouped by transcripts (the list elements).
+
+- SAQ1: Please tell how many transcripts in total are defined in the hg19 TxDb object.
+- Your answer: 82960.
+
+
+## 4. Filter the Transcripts by the Chromosome Number and Transcript Lengths:
+
+The computational cost for the RNA 2ndary structures is expensive for long transcripts.
+Therefore, we need to subset the `transcripts` GRangelist into the transcripts on chromosome 21 and with transcript width > 100 and <= 500. 
+
+P.S. Please use the same variable as before to store the filtered transcripts.
+
+```{r}
+## === Hint code, fill the xs  ============= ##
+#transcripts <- transcripts[seqnames(transcripts) == "xxxx"]
+#tx_width <- sum(width(transcripts))
+#transcripts <- transcripts[xxxxxx]
+## ===== Enter your code below  ============ ##
+transcripts <- transcripts[seqnames(transcripts) == "chr21"]
+tx_width <- sum(width(transcripts))
+transcripts <- transcripts[tx_width > 100 & tx_width <= 500]
+```
+
+- SAQ2: Please tell how many transcripts in total satisfy the criteria above.
+- Your answer: 69.
+
+## 5. Extract the Transcript Sequences from the Genome:
+
+Apply the function `extractTranscriptSeqs()` to extract the DNA sequences of the mature RNA transcripts from genomes.
+Please type `?extractTranscriptSeqs()` for the usage of the function. 
+The sequence output should be stored into the variable named by `tx_seqs`.
+
+```{r}
+## === Hint code, fill the xs  ============= ##
+#tx_seqs <- extractTranscriptSeqs(xxx,xxxxx)
+## ===== Enter your code below  ============ ##
+tx_seqs <- extractTranscriptSeqs(genome, transcripts)
+# ?extractTranscriptSeqs()
+```
+
+Check the outlook of `tx_seqs`:
+```{r}
+tx_seqs
+```
+
+- SAQ3: Please paste the DNA sequence for the transcript `uc002ytg.1` below.
+- Your answer:
+
+DNA sequence for the transcript `uc002ytg.1`:
+GGTGAAAAGGTGGAGGGGCTACAAGCTCAAGCCCTATATCCTTGGAGAGCCAAAAAAGACAACCACTTAAATTTTAACAA
+AAATGATGTCATCACCGTCCTGGAACAGCAAGACATGTGGTGGTTTGGAGAAGTTCAAGGTCAGAAGGGTTGGTTCCCCA
+AGTCTTACGTGAAACTCATTTCAGGGCCCATAAGGAAGTCTACAAGCATGGATTCTGGTTCTTCAGAGAGTCCTGCTAGT
+CTAAAGCGAGTAGCCTCTCCAGCAGCCAAGCCGGTCGTTTCGGGAGAAGGGCTCTGGAACTGCTGGGAAAACAGGGAGTT
+TAGGAAAAAAACCTGGTCCCTCCTGTAACGTGAAATAAAAAGAAAGAAATTTGCCCTGCCATGATTTGCACCTGATATTC
+AGGGATCACTCTCAAAAT
+
+## 6. Save the Sequences in the Disk as fasta File:
+
+Now, save the `DNAStringSet` object of variable `tx_seqs` as a FASTA file on your disk, the FASTA file should be named by `tx_seqs.fasta`.
+
+This step is easy since the export of DNAStringSet is supported by the function `writeXStringSet()`.
+
+```{r}
+## === Hint code, fill the xs  ============= ##
+#writeXStringSet(xxx,xxxx)
+## ===== Enter your code below  ============ ##
+writeXStringSet(tx_seqs,"tx_seqs.fasta", format="fasta")
+```
+
+- SAQ4: Please report the first 4 lines of the `tx_seqs.fasta` file. Please try to explain the components of the observed format. 
+- Your answer:
+
+first 4 lines: >uc021wgv.1
+CGCGACTGCGGCGGCGGTGGTGGGGGGAGCCGCGGGGATCGCCGAGGGCCGGTCGGCCGCCCCGGGTGCCGCGCGGTGCC
+GCCGGCGGCGGTGAGGCCCCGCGCGTGTGTCCCGGCTGCGGTCGGCCGCGCTCGAGGGGTCCCCGTGGCGTCCCCTTCCC
+CGCCGGCCGCCTTTCTCGCG
+
+Components: transcript names and DNA sequences.
+
+
+## 7. Run RNAfold for the fasta File with Bash Command on the Linux System:
+
+RNAfold is a command-line tool in the Vienna RNA package to predict RNA secondary structures with RNA sequences. Hence, for this question, you need to call the Linux bash command within R.
+
+RNAfold can be downloaded at: https://www.tbi.univie.ac.at/RNA/, and you could install it on your own computer. But by this time, on our Linux server, RNAfold has already been installed.
+
+Please run RNAfold with the previously saved FASTA file `tx_seq.fasta`.
+
+Set the temperature of folding into 70 degrees with argument `--temp=70`, and then save the standard output of RNAfold into a file named by `RNAstructure.txt`.
+
+Please notice that in Linux bash, we can channel the output of a bash command into a text file with `>` mark, such as:
+
+`Command --argument=x INPUT.fasta > OUTPUT_saved.txt `
+
+Also, you could call the system command line within R using the `system()` function.
+
+```{r}
+## === Hint code, fill the xs  ============= ##
+#system("xxx --xxxx xxxxx > xxxxxx")
+## ===== Enter your code below  ============ ##
+system("RNAfold --temp=70 tx_seqs.fasta > RNAstructure.txt")
+```
+
+- SAQ5: Open the pdf file for the predicted RNA structure of the transcript `uc002ytg.1`, 
+How many hairpin loops, interior loops, bulge loop, and multi-branch loop are presented in the RNA structure, respectively?
+
+- Your answer: 3 hairpin loops, 7 interior loops, 0 bulge loop, and 3 multi-branch loops.
+
+- SAQ6: Report the first 3 lines of the file `RNAstructure.txt`, please also interpret the format.
+
+- Your answer:
+
+First 3 lines: >uc021wgv.1
+CGCGACUGCGGCGGCGGUGGUGGGGGGAGCCGCGGGGAUCGCCGAGGGCCGGUCGGCCGCCCCGGGUGCCGCGCGGUGCCGCCGGCGGCGGUGAGGCCCCGCGCGUGUGUCCCGGCUGCGGUCGGCCGCGCUCGAGGGGUCCCCGUGGCGUCCCCUUCCCCGCCGGCCGCCUUUCUCGCG
+
+Components of this file: transcript names, RNA sequences, structures representative of the RNA sequence and minimum free energy.
+
+## 8. Read the output of RNAfold into GRanges:
+
+The next step is to read the predicted RNA structures, which are stored using parentheses representation, into R. The basic idea for the code below is to match for the "(" or "." in the output file of RNAfold. Then, for hybridized and non-hybridized regions, it will construct the string matching results into GRanges object on the transcript coordinate.
+
+Please fill in the missing portion of the following code chunk to make it run correctly. 
+
+```{r}
+## Read the output file into R:
+RNAfold_out <- readLines("RNAstructure.txt")
+Struc_pred <- RNAfold_out[seq(3, by = 3, length.out = length(tx_seqs))]
+
+## Remove the energy scores attached at the end:
+Struc_pred <- gsub(" .*", "", Struc_pred)
+Struc_pred <- BStringSet(Struc_pred)
+names(Struc_pred) <- names(tx_seqs)
+Struc_pred
+
+## Construct the GRanges object for hybridized and nonhybridized regions:
+
+## === Hint code, fill the xs  ============= ##
+#nonHyb_irl <- lapply(vmatchPattern("x",Struc_pred), reduce)
+#Hyb_irl <- lapply(nonHyb_irl, xxxx) # Note: the `xxxx` is one of the inter-range method, please see BIO214_refcard.rmd.
+## ===== Enter your code below  ============ ##
+nonHyb_irl <- lapply(vmatchPattern(".",Struc_pred), reduce)
+Hyb_irl <- lapply(nonHyb_irl, gaps) # Note: the `xxxx` is one of the inter-range method, please see BIO214_refcard.rmd.
+##===== Your Code is finished till here =====##
+
+##Convert the IrangesList into GRanges
+irl2grl <- function(irl) GRangesList( mapply(function(x,y) GRanges(seqnames = y,
+                                                                   ranges = x,
+                                                                   strand = "*"),irl,names(irl)) )
+
+Hyb_gr <- unlist(irl2grl(Hyb_irl))
+nonHyb_gr <- unlist(irl2grl(nonHyb_irl))
+
+Hyb_gr ##The Granges for Hybridized regions on the transcript
+nonHyb_gr ##The Granges for non-Hybridized (Looped) regions on the transcript
+```
+
+- SAQ7: How many hybridized regions and loop regions are predicted by RNAfold on those transcripts?
+
+- Your answer: 1828 hybridized regions and 1897 loop regions.
+
+## 9. Map from transcript coordinates to genome coordinates:
+
+The next step is to map the GRanges from the transcript coordinates into Genome coordinates.
+
+Whenever we need to do this kind of task in R, we generally rely on 2 powerful Bioconductor functions: `mapFromTranscripts` and `mapToTranscripts`. If our input range is on the transcript and the target range is on the genome, we should use `mapFromTranscripts`, conversely, we should use `mapTotranscripts`. Please check the help docomentation using `? + function name` for the detailed explanations of their usage.
+
+```{r}
+## === Hint code, fill the xs  ============= ##
+#Hyb_gr <- mapxxxTranscripts(xxx,xxxx)
+#nonHyb_gr <- mapxxxTranscripts(xxx,xxxx)
+## ===== Enter your code below  ============ ##
+Hyb_gr <- mapFromTranscripts(Hyb_gr,transcripts)
+nonHyb_gr <- mapFromTranscripts(nonHyb_gr,transcripts)
+##===== Your Code is finished till here =====##
+Hyb_gr
+nonHyb_gr
+```
+
+- SAQ7: How the `seqnames` field of the GRanges changed before and after the transcript to genome mapping? please explain the reason behind this change.
+
+- Your answer: The seqnames field of GRanges before are (RNA) transcipt names. The seqnames field of GRanges after the transcript to genome mapping are "chr21", which is chromosome names. 
+
+## 10. Extract the GC content under each regions:
+
+In this step, we will extract the sequence content, particularly the GC content, behind the hybridized regions and the looped regions. GC content is defined as the proportion of G and C within a given nucleotide sequence. 
+
+Then, construct 2 vectors named by `Hyb_GC` and `nonHyb_GC` storing the GC contents for the previously predicted hybridized and non-hybridized regions.
+
+You may need the help of the following functions in this step:
+- `Views()`: for extracting sequences underneath GRanges on `BSgenome` object.
+- `DNAStringSet()`: for the convertion of the BSgenome views into a set of DNA strings so that we could calculate their sequence content.
+- `letterFrequency()`:for the calculation of the proportion / frequency of nucleotides within XStringSet.
+
+Please check the documentation for these functions with `?` to get more clues.
+
+```{r}
+## === Hint code, fill the xs, =========================== ##
+## === The xs might be nested with > 1 functions ========= ##
+#Hyb_GC <- letterFrequency(xxxxxxx, "xx", as.prob=TRUE)
+#nonHyb_GC <- letterFrequency(xxxxxxx, "xx", as.prob=TRUE)
+## ===== Enter your code below  ========================== ##
+Hyb_GC <- letterFrequency(DNAStringSet(Views(genome,Hyb_gr)), c("C","G"), as.prob=TRUE)
+nonHyb_GC <- letterFrequency(DNAStringSet(Views(genome,nonHyb_gr)), c("C","G"), as.prob=TRUE)
+```
+
+## 11. Draw a box plot of the GC content stratified by regions:
+
+Apply the R base function `boxplot()` to draw a box plot based on the constructed data.frame `plot_df`.
+
+```{r}
+plot_df <- data.frame(GC = c(Hyb_GC, nonHyb_GC),
+                      group = rep(c("Hyb", "nonHyb"),
+                                  c(length(Hyb_GC), length(nonHyb_GC))
+                                  ))
+## === Hint code, fill the xs  === ##
+## boxplot(xx~xxx, data = plot_df) 
+## ====Enter your code below====== ##
+boxplot(GC~group, data = plot_df)
+```
+
+- SAQ8: What are the median values of GC contents for the hybridized region and non-hybridized region? Please explain why one group is higher than the other from the molecular perspective.
+
+- Your answer: For the hybridized region, the median value is about 0.29. For the non-hybridized region, the median value is about 0.15.
+
+## 12. Test the difference in means using t-test and wilcox-test:
+
+Conduct the t.test and wilcox.test to test for the difference of sample means between 
+hybridized GC contents and looped GC contents.
+
+```{r}
+## === Hint code, fill the xs  === ##
+## t.test(xx, xxx)
+## wilcox.test(xx, xxx)
+## ====Enter your code below====== ##
+t.test(plot_df$GC[plot_df$group == "Hyb"], plot_df$GC[plot_df$group == "nonHyb"])
+wilcox.test(plot_df$GC[plot_df$group == "Hyb"], plot_df$GC[plot_df$group == "nonHyb"])
+```
+
+- SAQ9: Please interpret the result of the 2 statistical tests, what can you conclude from them? What is the difference between wilcox.test and t.test? If we have a small sample size for each group, i.e. < 30, which statistical test is more robust?
+
+- Your answer: For Welch Two Sample t-test and Wilcoxon rank sum test, p-values are all less than 2.2e-16. The p-value is small enough so that we can reject the null hypothesis that there is no difference of sample means between hybridized GC contents and looped GC contents or the difference is due to chance. We can conclude that the difference of sample means between hybridized GC contents and looped GC contents is significant. If we have a small sample size for each group, i.e. < 30, Wilsoxon test is more robust since it is a non-parametric test where there is no assumption of normal distribution.
+
+## Session info
+```{r}
+sessionInfo()
+```
+
