@@ -1,0 +1,359 @@
+---
+title: "BIO214 Project 2. Comparative Genomics and Conservation Analysis"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE,
+                      fig.align = "center")
+```
+
+## The Outline for Project 2:
+
+In project 2, our target is to perform comparative genomics analysis between large animal genomes using information stored on the Ensembl and UCSC databases. The first part of project 2 attempts to extract the orthologous mapping between genes defined in the Ensembl database. Subsequently, we will examine the association between the conservation and protein-coding status of different genes. The second half of project 2 will explore the liftOver functionality developed by UCSC to convert the locations of epigenetic markers between genomes. In the end, statistical analysis will be performed to compare the PhastCons scores within the genomic regions sorrounding the epigenetic sites.
+
+##1. Load the Ensembldb Package for hg38
+
+`EnsDb` can be viewed as an ensmble parallel of the `TxDb` object. Compared with the TxDb object from UCSC, EnsDb contains more information on genes and transcript annotations (e.x. biotypes). The analysis performed in this project will be based on the ensembldb package for genome assembly of GRCh38 (hg38).
+
+Using the code below, please load the human ensembldb package and evaluate the EnsDb object.
+```{r}
+## Load the Ensembl Db package for hg38:
+library(EnsDb.Hsapiens.v86)
+EnsDb.Hsapiens.v86
+```
+
+- SAQ1: From the printed information of EnsDb object, please tell the version of the genome build in this package. How many genes and transcripts are defined in this package? Could you please explain why there are more transcripts than genes in the human genome?
+
+- Your answer: The version of the genome in this package is 86. There are 63970 genes and 216741 transcripts. Some individual genes give rise to many transcripts of different lengths because some of their exons are optional and may or may not be retained in the mature RNA.
+
+Then, extract the genes from the EnsDb object with the function `genes()`, store the `GRanges` object into the variable named by `genes_hg38`.
+
+```{r}
+## === Hint code, fill the "___"  ============= ##
+#genes_hg38 <- ___(___)
+## ===== Enter your code below  =============== ##
+genes_hg38 <- genes(EnsDb.Hsapiens.v86)
+```
+Evaluate the resulting `genes_hg38` variable:
+```{r}
+genes_hg38
+```
+- SAQ2: Please try to briefly explain the structure of the GRanges object. What does the `names` of each GRanges element means? 
+What is the `gene_biotype` filed in the metadata column means?
+
+- Your answer: The names(genes_hg38) are Ensembl IDs for genes. genes_hg38$gene_biotype is the types of transcripts.
+
+P.S. Just like a vector data type in R, you could access the names of a GRanges object with `names()`.
+
+## 2. Retrieve the Homologous Genes of Human in Mouse
+
+The orthologous relationships between species are stored in the Ensembl database. 
+To make an online query to the Ensembl databse within R, we need to rely on the `biomaRt` package.
+
+Load the package and extract the mart object with the following code.
+The `mart` object stored in m represents the connection to the human gene datasets on the ensembl database.
+
+```{r}
+library(biomaRt)
+m <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+m
+```
+
+Then, please check filters in human Ensembl database (things can be converted) with: `grep( "gene_id", listFilters(m)$name , value = TRUE)`.
+Please also check the attributes in human Ensembl database (things can be converted into) with: `grep( "mmusculus", listAttributes(m)$name , value = TRUE)`.
+
+```{r}
+grep( "gene_id", listFilters(m)$name , value = TRUE)
+grep( "mmusculus", listAttributes(m)$name , value = TRUE)
+```
+
+P.S. I also help you to subset the results by regular expressions to narrow your range of choice.
+
+Then, within the listed choices of attributes and filters, please make a mapping between human's ensembl gene id and the homologous genes ensemble gene id on mouse using the function `getBM`. Store the result in a variable named by `map`.
+
+Please refer to the annotation section within `BIO214_RefCard.html` for the usage of `get BM`.
+
+Additionally, as it is shown in the RefCard, to make the output a tabular format, please set the input for the `attributes =` argument of the form: c(queried name, returned name).
+
+```{r,cache=TRUE}
+## === Hint code, fill the "___"  ============= ##
+#map <- getBM(mart = ___,
+#             attributes = c(___,___),
+#             filters = ___,
+#             values = names(genes_hg38))
+## ===== Enter your code below  =============== ##
+map <- getBM(mart = m,
+            attributes = c("ensembl_gene_id","mmusculus_homolog_associated_gene_name"),
+            filters = "ensembl_gene_id",
+            values = names(genes_hg38))
+```
+
+Please check the results of the mapping stored in `map`:
+```{r}
+table(table(map$ensembl_gene_id)) #Check the frequencies of the duplication times in the query 
+```
+
+- SAQ3: Is the mapping between human gene ids and the gene ids of the mouse homologous genes injective (One-to-One) or not? If not, why some human genes can have more than one homologous genes in mouse?
+
+- Your Answer: No. Because a duplication event, after speciation, leads to the formation of multiple genes with similar function or sequence, resulting in homologous genes belonging to more than one pairs.
+
+## 3. Examine the Association Between the Conserved Genes and the Protein Coding Genes
+
+After obtaining the mapping between human genes and mouse homologous genes, we want to examine a hypothesis that whether the conserved genes between human and mouse are more likely to be protein-coding genes.
+
+First, extract the human Ensembl gene ids for the conserved human genes (on mouse). The conserved human genes are defined by the genes having 1 or more homologous genes on mouse, and the result of the homologous gene cannot be "" (it means not having confirmed homologous on mouse genome).
+
+After extracting the conserved human gene id, please create a dummy variable (TRUE or FALSE variable) attached to the metadata column of the `genes_hg38` GRanges object. Please name after the metadata column by `conserved_on_mm10`. The dummy variable is TRUE if the corresponding gene is conserved in mouse, and it will be FALSE otherwise.
+
+```{r}
+## === Hint code, fill the "___"  ============= ##
+#conserved_human_id <- map$___[map$___ != ""]
+#genes_hg38$conserved_on_mm10 <- names(genes_hg38) %in% ___
+## ===== Enter your code below  =============== ##
+conserved_human_id <- map$ensembl_gene_id[map$mmusculus_homolog_associated_gene_name != ""]
+genes_hg38$conserved_on_mm10 <- names(genes_hg38) %in% conserved_human_id
+
+```
+
+Please check the annotated metadata column with the function `table`. The output will tell you that how many human genes are conserved on mouse.
+```{r}
+table(genes_hg38$conserved_on_mm10)
+```
+
+- SAQ4: Please copy the number of conserved human genes on mouse. 
+- Your Answer: 19461
+
+Then, create the following 2 dummy vectors with equal lengths.
+
+- `coding_genes`: an indicator variable for the metadata column of `gene_biotype` equals "protein_coding".
+
+- `conserved_genes`: a copy of the metadata column of `conserved_on_mm10`.
+
+Cross-tabularize the two logical vectors into a contingency table (2*2). Evaluate the contingency table, and then perform a fisher's exact test on the contingency table using the function `fisher.test()`.
+
+Please notice that Fisher's exact test can be viewed as the permutation test of a pair of equally-lengthed binary vectors. In other words, fixing one binary vector and permutate the other can simulate the null distribution of a Fisher's exact test. Therefore, the test is essentially detecting the non-random association of 1s and 0s on the corresponding positions of the vectors.
+
+```{r}
+## === Hint code, fill the "___"  ============= ##
+#coding_genes <- genes_hg38$___ == ___
+#conserved_genes <- genes_hg38$___
+#contingency_table <- table(___, ___)
+#contingency_table
+#fisher.test(___)
+## ===== Enter your code below  =============== ##
+coding_genes <- genes_hg38$gene_biotype == "protein_coding"
+conserved_genes <- genes_hg38$conserved_on_mm10
+contingency_table <- table(coding_genes, conserved_genes)
+contingency_table
+fisher.test(contingency_table)
+```
+
+- SAQ5: Interpret the contingency table as well as the summary of the Fisher's exact test. Is the protein-coding status associate with the conservation status across all human genes? If so, the association is in what direction and of what effect size (measured by the odds ratio)? How statistically significant is the observed association?
+
+- Your Answer: Yes, there is a significant (p-value < 2.2e-16) association between protein-coding status and conservation status across all human genes. Odds ratio is 89.5335 which is larger than 1. This indicates that the association is positive. In other word, protein-coding genes are more likely to be conserved. The p-value is less than 2.2e-16 which is highly significant.
+
+## 4. Analyze the Evolutionary Conservation of Epigenetic Modification
+
+For the first time in this course, we will import some external annotations into our analysis.
+
+Our target is to compare one type of epigenetic modification between human and mouse genomes.
+
+We have the modification data in BED format on both the human and mouse genomes, and the files are stored under the directory of project 2. The names of the 2 files are: `mod_hg38.bed` and `mod_mm10.bed`.
+
+Both the human and mouse data are the single based annotation sites on the genome, i.e. the ranges have all widths equal to 1.
+
+Please use the `import()` function defined in `rtracklayer` package to read the 2 BED files into R. The variable names of them should be `mod_hg38_gr` and `mod_hg19_gr`
+
+
+```{r}
+## === Hint code, fill the "___"  ============= ##
+#library(rtracklayer)
+#mod_hg38_gr <- ___
+#mod_mm10_gr <- ___
+## ===== Enter your code below  =============== ##
+library(rtracklayer)
+mod_hg38_gr <- import("mod_hg38.bed")
+mod_mm10_gr <- import("mod_mm10.bed")
+```
+
+We still need to use the `genes_hg38` to analyze the modification data. However, the chromosome names of it is not in the UCSC style (the style used by the BED files), and we need to run the following code to convert it.
+
+```{r}
+re_genes_hg38 <- keepStandardChromosomes(genes_hg38,pruning.mode = "coarse")
+seqlevels(re_genes_hg38) = paste0("chr",seqlevels(re_genes_hg38))
+seqlevels(re_genes_hg38)[23] <- "chrM"
+```
+
+After changing the seqlevels of the genes, please perform a Fisher's exact test for the association between the epigenetically modified genes and the conserved genes. The gene's conservation used is defined by the previous analysis. You may consider the `%over%` function (one of the intra-range method) useful to achieve this goal.
+
+```{r}
+## === Hint code, fill the "___"  ============= ##
+#modified_index <- ___ %over% ___
+#conserved_index <- ___
+#contingency_table <- table(___, ___)
+#contingency_table
+#fisher.test(___)
+## ===== Enter your code below  =============== ##
+modified_index <- re_genes_hg38 %over% mod_hg38_gr # x overlaps any in y
+conserved_index <- re_genes_hg38$conserved_on_mm10
+contingency_table <- table(modified_index, conserved_index)
+contingency_table
+fisher.test(contingency_table)
+```
+
+- SAQ6: What does the result of Fisher's exact test suggests? Compared with the unconserved genes, is the epigenetic modification more likely to occur on the conserved genes? 
+
+- Your Answer: The Fisher's exact test suggests there is a significant (p-value < 2.2e-16) association between modified genes and conserved genes. And the association is positive as the odds ratio is 13.4689 which is larger than 1. Compared with the unconserved genes, the epigenetic modification is more likely to occur on the conserved genes.
+
+## 5. Apply LiftOver to Convert Between Genome Coordinates
+
+LiftOver is a tool developed by UCSC genome browser to convert the genome coordinates and genome annotation files between assemblies. The functionality is realized by calling back the mapping results obtained by the pair-wised genome alignment.
+
+In this part, we want to convert the coordinate of human modifications into the mouse genome. Then, we will compare the true modification sites on the mouse genome with the "lifted" sites from the human genome. 
+
+The LiftOver conversion is based on the "chain files", and the chains could be downloaded at the genome browser of [UCSC](http://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/)
+
+The chain file to convert the hg38 into mm10 is named as: `hg38ToMm10.over.chain`. The file is already downloaded and saved under your project directory, please read the chain file into R using `import.chain()` function defined in the package rtracklayer.
+
+Next, lift the human modification sites from hg38 to mm10 with `liftOver()`. Name the lifted sites by `mod_mm10_lift`.
+
+```{r}
+## === Hint code, fill the "___"  ============= ##
+#chain <- ___
+#mod_mm10_lift <- ___
+## ===== Enter your code below  =============== ##
+chain <- import.chain("hg38ToMm10.over.chain")
+mod_mm10_lift <- liftOver(mod_hg38_gr,chain)
+```
+
+We will then check how many lifted sites can be overlapped with the mouse modification sites. The result can be clearly visualized using a Venn diagram.
+
+Hence, In the next, please draw a Venn diagram with 2 circles, the circle on the left is the set for human modification, and the circle on the right is the set for the mouse. The intersected region of the 2 circles is the overlapped sites between the lifted human sites and the mouse sites.
+
+You will find the function `draw.pairwise.venn()` in package `VennDiagram` useful to draw the diagram.
+
+```{r}
+## === Hint code, fill the "___"  ============= ##
+# library(VennDiagram)
+# Overlap_index <- ___ %over% ___
+# grid.newpage()
+# draw.pairwise.venn(area1 = length(___),
+#                   area2 = length(___),
+#                   cross.area = sum(___),
+#                   category = c("Human_mod", "Mouse_mod"),
+#                   lty = rep("blank",2), fill = c("light blue", "pink"),
+#                   alpha = rep(0.5, 2), cat.pos = c(0,0),
+#                   cat.dist = rep(0.025, 2), scaled = FALSE)
+## ===== Enter your code below  =============== ##
+library(VennDiagram)
+Overlap_index <- mod_mm10_lift %over% mod_hg38_gr
+grid.newpage()
+draw.pairwise.venn(area1 = length(mod_mm10_lift),
+                  area2 = length(mod_hg38_gr),
+                  cross.area = sum(Overlap_index),
+                  category = c("Human_mod", "Mouse_mod"),
+                  lty = rep("blank",2), fill = c("light blue", "pink"),
+                  alpha = rep(0.5, 2), cat.pos = c(0,0),
+                  cat.dist = rep(0.025, 2), scaled = FALSE)
+```
+
+This time, repeat the above analysis after shifting the `mod_mm10_lift` toward the left by 100bp.
+
+Please use the intra-range method `shift()` to perform the horizontal moves on GRanges.
+
+```{r}
+## === Hint code, fill the "___"  ============= ##
+#Overlap_index <- ___ %over% ___
+#grid.newpage()
+#draw.pairwise.venn(area1 = length(___),
+#                   area2 = length(___),
+#                   cross.area = sum(___), 
+#                   category = c("Human_mod", "Mouse_mod"), 
+#                   lty = rep("blank",2), fill = c("light blue", "pink"), 
+#                   alpha = rep(0.5, 2), cat.pos = c(0,0), 
+#                   cat.dist = rep(0.025, 2), scaled = FALSE)
+## ===== Enter your code below  =============== ##
+Overlap_index <- shift(mod_mm10_lift,shift = -100) %over% mod_hg38_gr
+grid.newpage()
+draw.pairwise.venn(area1 = length(mod_mm10_lift),
+                  area2 = length(mod_hg38_gr),
+                  cross.area = sum(Overlap_index),
+                  category = c("Human_mod", "Mouse_mod"),
+                  lty = rep("blank",2), fill = c("light blue", "pink"),
+                  alpha = rep(0.5, 2), cat.pos = c(0,0),
+                  cat.dist = rep(0.025, 2), scaled = FALSE)
+```
+
+
+- SAQ7: What is the overlapping number between lifted human sites and mouse sites? How does the number changed after shifting the lifted human sites toward the right? Do you expect the change in the overlapping caused by random sampling? From an evolutionary perspective, what conclusion can you derive from these 2 diagrams.
+
+- Your Answer: The overlapping number between lifted human sites and mouse sites is 42. The number changed from 42 to 41 after shifting the lifted human sites 100 bp toward the right (however, the question above asked to shift 100bp toward left and the overlaping number is changed to 35 as seen in Venn graph). There can be changes in the overlapping after random sampling. There are around 40 modified genes that are conserved between human and mouse.Lifted human sites overlap more mouse sites than shifted mouse sites.
+
+## 6. Analyze the PhastCons Scores on the Surrounding Regions of the Epigentic Sites
+
+PhastCons is a program to extrapolate the likelihood of evolutionary conservation on genomes. Given a phylogenetic tree, the PhastCons score is inferred by an HMM in multiple alignments. The value of the PhastCons score is between 0 - 1, which is the posterior probability of high degree conservation given the observed multiple alignment patterns among species.
+
+Our target is to extract the PhastCons scores of the 51bp regions centered by the human modification sites on hg38. We will repeat the above process based on the ranges left-shifted by 100bp. At last, we will compare the distribution of the 2 groups of PhastCons scores using their empirical CDFs.
+
+We will use the package `phastCons100way.UCSC.hg38` to extract the conservation scores on hg38. As the package name suggested, the scores are obtained on a phylogenetic tree of 100 species. The package will export a `GSscores` object using the package name.
+
+Please use the function `gscores()` to access the phastCons scores from the `GScores` object under the original and unshifted regions. Store the scores into 2 vectors named by `PCscore_mod_101` and `PCscore_shifted_101`.
+
+```{r}
+library(phastCons100way.UCSC.hg38)
+## === Hint code, fill the "___"  ============= ##
+#PCscore_mod_51 <- gscores(___)$default
+#PCscore_shifted_51 <- gscores(___)$default
+## ===== Enter your code below  =============== ##
+PCscore_mod_51 <- gscores(phastCons100way.UCSC.hg38, mod_hg38_gr)$default
+PCscore_shifted_51 <- gscores(phastCons100way.UCSC.hg38, shift(mod_hg38_gr,shift = -100))$default
+## ===== Your code is finished  =============== ##
+library(ggplot2)
+plot_df <- data.frame(PhastCons = c(PCscore_mod_51,PCscore_shifted_51),
+                      Shifted = rep(c(F,T),each = length(mod_hg38_gr)))
+ggplot(plot_df, aes(x = PhastCons,
+                    colour = Shifted)) + 
+      stat_ecdf(geom = "step") + 
+      labs(y = "Quantiles", x = "PhastCons Scores") 
+```
+
+After running the code above, you will obtain an empirical CDF plot stratified by the shifting operation.
+
+- SAQ8: What does the empirical CDFs tell you about the relationship between the 2 distributions? Is one group establishing first-degree stochastic dominance over the other? If Yes, which group is dominating over the other? 
+What could we conclude from this result?
+
+- Answer: The empirical CDF of PhastCons scores for shifted sites is larger than that of non-shifted ranges for any phastCons score, because when the phastCons score is zero, there are more shifted regions than original region. But when the score is larger than zero, the increasing rate of CDF of two curve is roughly the same, which means the probability of each phastCons score(>0) is roughly the same for the two regions.
+Yes, the group with shifted ranges has first-degree stochastic dominance over the other. According to the formula of first-order stochastic dominance (FSD), for all PhastCons scores, the CDF of group with shifted ranges is always larger than the CDF of the other. We can conclude that shifting causes more zero phastCons scores and less one phastcons scores.
+
+See the following web pages if you are not familiar with some of the terms:
+
+- [Emperical CDF](https://stats.stackexchange.com/questions/239937/empirical-cdf-vs-cdf)
+
+- [First order stochastic dominance](https://en.wikipedia.org/wiki/Stochastic_dominance)
+
+At last, perform a KS test to compare the distributions of the orginal and shifted Phastcons scores.
+Please check the function `ks.test()` for more information.
+
+```{r}
+## === Hint code, fill the "___"  ============= ##
+#ks.test(___, ___)
+## ===== Enter your code below  =============== ##
+ks.test(PCscore_mod_51,PCscore_shifted_51)
+```
+
+- SAQ9: What null hypothesis can be rejected by the KS test if the p-value is less than 0.05? 
+Relating our data, what could we conclude from the outcome of the KS test? 
+
+- Answer: The null hypothesis of KS test is that the two groups are from the same distribution. As the p-value is less than 0.05, we can reject the null hypothesis and conclude that the two groups have different CDFs.
+
+## Session info
+```{r}
+sessionInfo()
+```
