@@ -298,8 +298,8 @@ Please check the documentation for these functions with `?` to get more clues.
 #Hyb_GC <- letterFrequency(xxxxxxx, "xx", as.prob=TRUE)
 #nonHyb_GC <- letterFrequency(xxxxxxx, "xx", as.prob=TRUE)
 ## ===== Enter your code below  ========================== ##
-Hyb_GC <- letterFrequency(DNAStringSet(Views(genome,Hyb_gr)), c("C","G"), as.prob=TRUE)
-nonHyb_GC <- letterFrequency(DNAStringSet(Views(genome,nonHyb_gr)), c("C","G"), as.prob=TRUE)
+Hyb_GC <- letterFrequency(DNAStringSet(Views(genome,Hyb_gr)), c("CG"), as.prob=TRUE)
+nonHyb_GC <- letterFrequency(DNAStringSet(Views(genome,nonHyb_gr)), c("CG"), as.prob=TRUE)
 ```
 
 ## 11. Draw a box plot of the GC content stratified by regions:
@@ -319,7 +319,7 @@ boxplot(GC~group, data = plot_df)
 
 - SAQ8: What are the median values of GC contents for the hybridized region and non-hybridized region? Please explain why one group is higher than the other from the molecular perspective.
 
-- Your answer: For the hybridized region, the median value is about 0.29. For the non-hybridized region, the median value is about 0.15.
+- Your answer: For the hybridized region, the median value is about 0.6. For the non-hybridized region, the median value is about 0.45. The hybridized region is higher than the other. GC pairs are more stable because they can hybridize together by three bonds, while there are only two bond between each AT pair.
 
 ## 12. Test the difference in means using t-test and wilcox-test:
 
