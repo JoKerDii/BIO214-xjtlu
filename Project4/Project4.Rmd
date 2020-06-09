@@ -1,0 +1,379 @@
+---
+title: "Project 4. EDA and Batch Effect Correction on NGS data"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE,
+                      fig.align = "center",
+                      fig.height = 3,
+                      fig.width = 6)
+```
+
+## The Outline for Project 4
+
+The major objective of Assignment 4 is to replicate the core analysis of the paper published in <Nature Biotechnology> in 2016. Next-Generation Sequencing (NGS) technology is currently the most popular data type in bioinformatics. Thousands of NGS datasets are stored in published datasets every year to capture the molecular characteristics of DNA, RNA and epigenetics in cells. In this project, our goal is to perform low-level EDA based on RNA-Seq data sets generated from 2 sequencing centers. We will discover the major source of technical variation in this dataset, and we will apply a statistical tool to correct the technical error.
+
+You could check the paper below for more of the background information:
+
+*Love, M. I., Hogenesch, J. B., & Irizarry, R. A. (2016). Modeling of RNA-seq fragment sequence bias reduces systematic errors in transcript abundance estimation. Nature biotechnology, 34(12), 1287.*
+
+## 1. Check the Experiment Design and Data Directories
+
+The data set contains 4 RNA-Seq samples sequenced from 2 centers under the Illumina Hi-Seq 2000 platform. All samples originate from the same cell line and the same biological conditions in the GEUVADIS project. The raw reads have been previously aligned onto the genomic assembly hg19 using STAR, and the resulting BAM files are saved in the working directory of project 4.
+
+The sample information is summarized in the table "samples.csv", from which we can construct the BAM file directories. Please use the string manipulation function `paste0 ()` to construct the name of the sorted BAM file from the `run` column of the table, and then use` file.exists () `to check whether all files exist in the current working directory. 
+
+```{r}
+## === Hint code, fill the "___" ============= ##
+#samples <- read.csv(___)
+#bamfiles <- paste0(___) #Paste the sample id with "_sort.bam"
+#file.exists(bamfiles) #Check if the bam files exist or not
+## ===== Enter your code below  =============== ##
+samples <- read.csv("samples.csv")
+bamfiles <- paste0(samples$run, rep("_sort.bam", 4)) #Paste the sample id with "_sort.bam"
+file.exists(bamfiles) #Check if the bam files exist or not
+```
+
+## 2. Extract the Longest Transcript of the Gene USF2
+
+In the following analysis, we want to investigate the RNA-Seq fragment coverage on the transcript of the gene USF2. First, please extract the exon regions of the longest transcript of gene USF2 on hg19. The expected output in this step is a `GRangesList` object of length 1, which contains all exons of the transcript. Please use `usf2_longest` to name the result variable.
+
+To achieve this, you first need to use the `select()` function to find the transcript IDs and transcript names associated with the gene USF2. You can use `keytypes(Homo.sapiens)` and `columns(Homo.sapiens)` to check all the id conversion options present in the Human `organismDb` package. The keys are the items that can be converted, and the columns are entries that can be converted to.
+
+USF2 is a gene symbol, so its key type in the organismDb object should be "SY___", and the corresponding column should be `c("TX___", "TX___")` so that we can retrieve the transcript IDs and the transcript names from the database package.
+
+The output of `exonsBy(txdb, by = "tx")` is a `GRangesList`, where each element corresponds to the exons of a transcript. You can use `elementNROWS ()` to access the length of each element in the list object.
+
+```{r}
+## === Hint code, fill the "___" ============= ##
+# library(TxDb.___.UCSC.___.knownGene)
+# library(Homo.sapiens)
+# txdb <- TxDb.___.UCSC.___.knownGene
+# g <- list()
+# g[["USF2"]] <- select(Homo.sapiens, "USF2", ___ , ___)
+# ebt <- exonsBy(txdb, by="tx")
+# head(names(ebt)) #Check the structure of exonsByTranscript, the names are TXIDs
+# usf2 <- ebt[ g[["USF2"]]$TXID ]
+# usf2_longest <- usf2[which.max(___)] #You need to only keep the longest transcript among the isoforms
+## ===== Enter your code below  =============== ##
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library(Homo.sapiens)
+txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
+g <- list()
+g[["USF2"]] <- select(Homo.sapiens, "USF2", columns = c("TXID" , "TXNAME"), keytype = "SYMBOL")
+ebt <- exonsBy(txdb, by="tx")
+head(names(ebt)) #Check the structure of exonsByTranscript, the names are TXIDs
+usf2 <- ebt[ g[["USF2"]]$TXID ]
+usf2_longest <- usf2[which.max(elementNROWS(usf2))] #You need to only keep the longest transcript among the isoforms
+```
+
+- SAQ1: How many transcript isoforms does USF2 have? How many exons are there in each transcript? What are the transcript id and transcript name for the longest transcript of USF2. Is the longest transcript the one with the greatest number of exons?
+
+- Your answer: 5 transcript isoforms. 9,10,9,8,8 exons for the transcript IDs: 66826,66827,66828,66829,66830. ID and name: 66827	and uc002nyq.1. Yes, the longest transcript the one with the greatest number of exons, which is 10.
+
+## 3. Load the BAM Files as Fragments on Transcript
+
+Next, we want to write an R function that will take the inputs of the BAM file directory and the `GRangesList` of the transcript, and it will return the GRanges of fragments "on transcript coordinates" (without introns). 
+
+The first step in this function is to read the BAM file using `readGAlignmentPairs()`. In this step, we need to set the `param=` argument with `ScanBamParam()` to define the filters used when reading BAM file: the reads loaded should lie within the scope of the target transcript, all of reads with mapping quality scores less than 30 will be discarded. Please see `?ScanBamParam()` on how to set the BAM filtering parameters.
+
+Subsequently, we need to only retain the aligned reads that are compatible to the exons of the transcript. This purpose can be achieved by the function `findCompatibleOverlaps()`. Then, the coordinates of the loaded reads are based on the genome, so we need to convert them to the coordinate of the transcript using the function `map___Transcripts()`.
+
+Please fill in the missing portion of the code chunk below to realize the above mentioned computations in the function `readTxFragments()`.
+
+```{r}
+library("GenomicAlignments")
+readTxFragments <- function(file, transcript) {
+  r <- range(transcript[[1]]) # Get the range of the target transcript on genome
+  r <- keepStandardChromosomes(r) # Only keep the transcript on standard chromosome
+  
+  
+  # Read the BAM files with required filters, and find the compatible reads
+  ## === Hint code, fill the "___" ============= ##
+  # suppressWarnings({
+  # gap <- readGAlignmentPairs(file, param=ScanBamParam(which = ___, mapqFilter = ___))
+  # }) # suppress warnings about alignments with ambiguous pairing
+  # fco <- findCompatibleOverlaps(___, ___)
+  ## ===== Enter your code below  =============== ##
+  suppressWarnings({
+  gap <- readGAlignmentPairs(file, param=ScanBamParam(which = r, mapqFilter = 30))
+  }) # suppress warnings about alignments with ambiguous pairing
+  fco <- findCompatibleOverlaps(gap, transcript)
+  ## ===== Your code is finished  =============== ##
+  idx <- queryHits(fco) # get index for the compatible reads
+  gr <- as(gap[idx],"GRanges") # subset the reads with index and convert it into GRanges
+  strand(gr) <- "*" # set the strand into both stands (*), this will fill the insert and make a pair of reads into 1 range.
+
+  # Convert the paired-end reads into fragments on exons by mapping the ends of the reads to transcript coordinate.
+  ## === Hint code, fill the "___" ============= ##
+  # m2tx.start <- map___Transcripts(resize(___, width=1, fix="start"), ___)
+  # m2tx.end <- map___Transcripts(resize(___, width=1, fix="end"), ___)
+  ## ===== Enter your code below  =============== ##
+  m2tx.start <- mapToTranscripts(resize(gr, width=1, fix="start"), transcript)
+  m2tx.end <- mapToTranscripts(resize(gr, width=1, fix="end"), transcript)
+  # ## ===== Your code is finished  =============== ##
+  # #Flip the start & end if the transcript is on the negative strand.
+  tx.strand <- as.character(strand(transcript)[[1]][1])
+  if (tx.strand == "+") {
+    m2tx <- GRanges(seqnames(m2tx.start),
+                    IRanges(start(m2tx.start),start(m2tx.end)))
+  } else {
+    m2tx <- GRanges(seqnames(m2tx.start),
+                    IRanges(start(m2tx.end),start(m2tx.start)))
+  }
+  return(m2tx)
+  
+}
+
+Fragment_list <- lapply(bamfiles, readTxFragments, transcript = usf2_longest)
+Fragment_list
+```
+
+- SAQ2: After iterating the function `readTxFragments` over the BAM files, check the result variable `Fragment_list`. For each sample, determine how many fragments are compatibly aligned to the exons of the target transcript?
+
+- Your answer: There are 2158, 2771, 2204, 2931 fragments for samples "ERR188204_sort.bam", "ERR188317_sort.bam", "ERR188297_sort.bam", "ERR188088_sort.bam", respectively.
+
+## 4. Plot the Fragment Length Distribution
+
+After obtaining the aligned fragments on the transcript, we want to compare the lengths of the fragments in different samples. In the following code chunk, please manipulate the `Fragment_list` with another `lapply()` function to calculate the fragment lengths for each sample. Then, run the following code to plot the fragment length distributions.
+
+```{r}
+## === Hint code, fill the "___" ============= ##
+#Fragment_len <- lapply(Fragment_list, ___)
+## ===== Enter your code below  ============== ##
+Fragment_len <- lapply(Fragment_list, width)
+## ===== Your code is finished  =============== ##
+plot_df <- data.frame( fragment_length = unlist( Fragment_len ),
+                   sample = rep(samples$run, elementNROWS(Fragment_list)),
+                   batch = rep(paste0("center ",samples$center),
+                               elementNROWS(Fragment_list)) )
+
+library(ggplot2)
+library(ggsci) #A package for good looking colours
+
+ggplot(plot_df, aes(x = fragment_length, color = sample, linetype = batch)) +
+  geom_density() +
+  theme_classic() + scale_color_npg() + labs(x = "Fragment Lengths")
+```
+
+Next, please calculate the average fragment length of each sample (BAM file), and store the vector in a variable named `average_frag_len`.
+
+```{r}
+## === Hint code, fill the "___" ============= ##
+# average_frag_len <- sapply(Fragment_len, ___ )
+## ===== Enter your code below  ============== ##
+average_frag_len <- sapply(Fragment_len, mean )
+```
+
+- SAQ3: Are the fragment lengths calculated in each BAM file fixed? Are the average fragment lengths different between samples? Is the reading length within each sample fixed? Given the read lengths in the BAM files are 76, what are the average "inner distances" of the 4 samples on the target transcript? Please discuss the potential source of variations for the fragment lengths in NGS.
+
+- Your answer: 
+
+No. The length of fragments in each BAM file are different. The average fragment lengths differ among four samples(The means are 159.7146, 170.2122, 193.0549, 191.0966). Given the read lengths in the BAM files are 76, the average "inner distances" of the 4 samples on the target transcript are 7.7146, 18.2122, 41.0549, 39.0966. 
+
+The sources of variations can be different protocols, GC-content and PCR enrichment, priming of reverse transcription by random hexamers, read errors introduced during the sequencing-by-synthesis reaction, and bias introduced by various methods of rRNA subtraction.
+
+P.S. please see this [link](https://www.biostars.org/p/106291/) to help you clarify the differences between fragment, read, insert, and inner distance.
+
+The definition of the fragment in our project actually corresponds to the 'insert' region mentioned in the link above. The term insert and fragment are often used interchangeably because the adaptors are removed in order to align the reads to the genome. However, we should aware that the "complete" fragments in 2nd-generation sequencing do have adaptor sequence at the ends.
+
+## 5. Check the Fragment Coverage on the Transcript
+
+In the next step, we want to visualize the "coverage" of the sequenced fragments on the target transcript. Coverage can be understood as the height obtained by stacking all features along the genome/transcript coordinate. In Bioconductor, we can compute the coverage of GRanges using the function `coverage()`. 
+
+For each list element of `Fragment_list`, calculate the coverage on transcript, and convert the coverage into integer vectors of counts. Store the coverage list in a variable named by `coverage_lst`.
+
+```{r}
+## === Hint code, fill the "___" ============= ##
+# coverage_lst <- lapply(___, function(x) as.vector(___[[1]]))
+## === Enter your code below ================= ##
+coverage_lst <- lapply(Fragment_list, function(x) as.vector(coverage(x)[[1]]))
+## === Your code is finished  ================ ##
+plot_df <- data.frame( tx_position = unlist(lapply(coverage_lst,seq_along)),
+                       coverage = unlist( coverage_lst ),
+                       sample = rep(samples$run, elementNROWS(coverage_lst)),
+                       batch = rep(paste0("center ",samples$center), elementNROWS(coverage_lst)) )
+
+ggplot(plot_df, aes(x = tx_position, y = coverage, color = sample, linetype = batch)) + geom_line() +
+  theme_classic() + scale_color_npg() + labs(x = "transcript coordinate")
+```
+
+- SAQ4: The figure above shows the coverage of fragments on transcript. Ideally, what distribution should the fragment coverges have on an exon and transcript? Are the observed coverages look like what we expected? What are the possible sources of the variations of the coverages between samples? Please try to discuss some of the potential consequences if we ignore such issue in the downstream analysis.
+
+- Your answer: The distributions should be roughly the same. The observed coverages are not expected. Bias include fragment length, and which optionally included read start sequence bias, fragment GC content etc. The sources can be technical bias in library preparation: RNA-specific molecular biology (RNA fragmentation, reverse-transcription), RNA selection method (rRNA depletion, polyA selection), and sequencing-specific molecular biology (adapter ligation, library enrichment, bridge PCR). One potential consequence is that it can be difficult to know whether anomalies in coverage are natural, or are due to technical artifacts. And false positives could happen in downstream results.
+
+## 6. Explore Fragment level GC Content Distributions
+
+Using the "Fragment_list" generated previously, extract the GC content of the fragments in 4 samples. The transcript sequence can be retrieved using `extractTranscriptSeqs ()`. Then, apply `Views ()` to extract the sequence underneath the fragment range. Store the GC content of each list element in a variable named `GC_list`.
+
+```{r}
+## === Hint code, fill the "___" ============= ##
+#library(BSgenome.___.UCSC.___)
+#usf2.seq <- extractTranscriptSeqs(___,___)[[1]]
+#GC_list <- lapply(Fragment_list,function(x) ___(___(Views(___, ranges(x)) ), ___, as.prob=___))
+## === Enter your code below ================= ##
+library(BSgenome.Hsapiens.UCSC.hg19)
+usf2.seq <- extractTranscriptSeqs(BSgenome.Hsapiens.UCSC.hg19, usf2)[[1]]
+GC_list <- lapply(Fragment_list, function(x) letterFrequency(DNAStringSet(Views(usf2.seq, ranges(x)) ), c("CG"), as.prob=TRUE))
+## === Your code is finished  ================ ##
+plot_df <- data.frame( GC_content = unlist( GC_list ),
+                       sample = rep(samples$run, elementNROWS(GC_list)),
+                       batch = rep(paste0("center ",samples$center), elementNROWS(GC_list)) )
+
+ggplot(plot_df, aes(x = GC_content, color = sample, linetype = batch)) + geom_density() +
+  theme_classic() + scale_color_npg() + labs(x = "Fragment GC content")
+```
+
+- SAQ5: After plotting the GC content densities, please discuss the potential cause of the variation observed between batches. Assume the observed bias exists across all the fragments of the library (not restricted to one transcript), will this bias lead to mistakes in the gene expression level quantification? Do you expect to observe a similar phenomenon if the reads are generated by 3rd generation sequencing? Please explain the reason.
+
+- Your answer: There may be critical regions that distinguish isoforms have GC content or sequence features that make fragments hard to amplify, resulting in false positives of predicted expression of isoforms that are lowly or not expressed. So GC content is one of the contributing sources. This bias could lead to mistakes in the gene expression level quantification, because certain fragments are preferentially detected in the RNA-seq data acquisition process, leading to nonuniform detection of expression between genes, as a result of GC effect. Similar phenomenon may not be observed in third generation sequencing, because bias could be reduceed largely. In addition, single-molecule sequencing technologies often produce more uniform coverage of the genome, as they are not as sensitive to GC content.
+
+## 7. Fit the Linear Relationships Between GC and Fragment Coverages
+
+In the previous question, we have explored the "marginal distributions" of fragment GC contents in different samples. We will next attempt to investigate the "joint distributions" between GC and coverages. If the modeling on the joint is good enough, the "offsets" of the coverages can be estimated, which can be used to correct the GC content bias. 
+
+To model the relationship between GC and coverage, we first need to identify all potential positions of the sequenced fragments, because many fragments that can potentially existed in the library have 0 counts in our data. The following code chunk will help us generate the coverage for potential fragments.
+
+You are required to fill the central step in this procedure, which is to use the function `slidingWindows()` to generate potential fragments on the coordinate of the target transcript. Set the window size into the average fragment length calculated from each sample, and set the step size to `1L` (moving one bp at a time).
+
+```{r}
+#Convert fragment into the end POS and compute their coverages
+POS <- lapply(Fragment_list, function(x) c(resize(x,1,fix = "start"),
+                                           resize(x,1,fix = "end")) )
+
+POS_coverage <- lapply(POS, function(x) as.numeric(coverage(x)[[1]]))
+
+#Get the range of the transcript on its own coordinate
+usf2_tx <- range(mapToTranscripts(unlist(usf2_longest),usf2_longest)) 
+
+#Find potential fragments for each sample 
+
+## === Hint code, fill the "___" ============= ##
+#PotentialFragments <- lapply( round(average_frag_len),
+#                             function(x) slidingWindows(___,___,___)[[1]] )
+## === Enter your code below ================= ##
+PotentialFragments <- lapply( round(average_frag_len),
+                            function(x) slidingWindows(usf2_tx,x,step=1L)[[1]] )
+## === Your code is finished  ================ ##
+
+#Count both ends of the potential fragments
+Fragment_counts <- mapply(function(x,y) y[start(x)]+y[end(x)],
+                             PotentialFragments,
+                             POS_coverage) 
+
+#Calculate GC on potential fragments
+GC_listp <- lapply(PotentialFragments,
+                   function(x) letterFrequency(DNAStringSet( 
+                                  Views(usf2.seq, ranges(x)) ), 
+                                        "GC", as.prob=TRUE))
+
+#Build a data.frame for plotting
+plot_df <- data.frame( GC_content = unlist( GC_listp ),
+                       Fragment_count = unlist(Fragment_counts),
+                       sample = rep(samples$run, elementNROWS(GC_listp)),
+                       batch = rep(paste0("center ",samples$center),
+                                   elementNROWS(GC_listp)) )
+```
+
+We will next try to fit an ordinary linear regression model using smoothing splines of 5 knots. The covariate (x) and response variable (y) are GC content and end coverage of the potential fragments, respectively. 
+
+### Gaussian Regression:
+
+```{r}
+## define the smooth function for ordinary linear regression
+lm_smooth <- function(...) {
+  geom_smooth(method = "lm", ...)
+}
+
+ggplot(plot_df, aes(x = GC_content, y = Fragment_count,
+                    color = sample, linetype = batch)) + 
+        lm_smooth(formula = y ~ splines::ns(x, 5)) +
+        theme_classic() + scale_color_npg() + 
+        labs(x = "Fragment GC content", 
+             y = "Fragment count",
+             main = "Gaussian Regression")
+```
+
+We have obtained the fitted curves between GC and coverage for different samples. Subsequently, we will try an alternative model called Poisson regression. Please fill out the function `poisson_smooth()` so that ggplot2 could fit Poisson regression on our data.
+
+P.S. the Poisson regression is a type of generalized linear model. In R, Poisson glm can be called with the function `glm()` and family = "poisson". The difference between Poisson regression and ordinary linear regression is that the Poisson regression treats the noises as Poisson distributions, while the OLR teats the noises as zero-center normal distributions.
+
+### Poisson Regression:
+
+```{r}
+poisson_smooth <- function(...) {
+## === Hint code, fill the "___" ============= ##
+#geom_smooth(method = ___, method.args = list(family = ___), ...)
+## === Enter your code below ================= ##
+geom_smooth(method = "glm", method.args = list(family = "poisson"), ...)
+## === Your code is finished  ================ ##  
+}
+
+ggplot(plot_df, aes(x = GC_content, y = Fragment_count,
+                    color = sample, linetype = batch)) +  
+        poisson_smooth(formula = y ~ splines::ns(x, 5)) +
+        theme_classic() + scale_color_npg() + 
+        labs(x = "Fragment GC content",
+             y = "Fragment count",
+             main = "Poisson Regression")
+```
+
+- SAQ6: The grey area around the curves represents the confidence intervals for the estimations of the conditional expectations (regression). From your opinion, which model fits better? Please give some reasons behind your choice of the model. (please think about the nature of the reads coverage datatype.)
+
+- Your answer: Poisson regression model fits better as CI is narrower. A narrow confidence interval implies that there is a smaller chance of obtaining an observation within that interval, therefore, our accuracy is higher. GC content causes the variability of read coverage, and this effect is not consistent between repeated experiments, or even libraries within the same experiment. So I think if the estimation of coverage is highly confident based on GC content, the model is better.
+
+## 8. Correct the Fragment Coverage by Straightening the GC content linear effects
+
+Using your selected model, please complete the following code to obtain the predicted values of reads coverage by fragment GC. Then, the fitted values will be used as offsets to conduct normalization on the sequencing data. Hopefully, this measure could help to remove the technical errors induced by GC. 
+
+```{r}
+## === Hint code, fill the "___" ============= ## This time ___, could have no content
+#offsets <- mapply(function(x,y){predict(___lm(y~splines::ns(x,5)___),data.frame(x))},
+#                  GC_listp, Fragment_counts) #mapply() is an iterative functional with 2 inputs, see ?mapply
+## === Enter your code below ================= ##
+offsets <- mapply(function(x,y){predict(glm(y~splines::ns(x,5), family = poisson),data.frame(x))}, 
+                  GC_listp, Fragment_counts) #mapply() is an iterative functional with 2 inputs, see ?mapply
+## === Your code is finished  ================ ##
+
+#The read coverage is normalized by dividing the original fragment counts by the exponentiated offsets, which is the fitted value of the linear regression model. The exponetiation is necessary if the prediction is made by poisson GLM which is on the log scale.
+normalized_counts <- mapply(function(x,y) x/exp(y), Fragment_counts, offsets)
+
+
+library(zoo)
+
+
+#The normalized coverage is calculated by the rolling sums (rollsum) of the normalized counts, while the ends are computed by cumulative sums (cumsum).
+normalized_coverages <- mapply(function(x,y) 
+                                c(cumsum(x[1:y]),rollsum(x,y),
+                                  rev(cumsum(x[length(x):(length(x)-y)])))/2,
+                               normalized_counts,
+                               average_frag_len) 
+
+#Finally, plot the normalized reads coverage with ggplot2.
+plot_df <- data.frame( tx_position = unlist(lapply(normalized_coverages,seq_along)),
+                       coverage = unlist( normalized_coverages  ),
+                       sample = rep(samples$run, elementNROWS(normalized_coverages)),
+                       batch = rep(paste0("center ",samples$center), elementNROWS(normalized_coverages)) )
+
+ggplot(plot_df, aes(x = tx_position, y = coverage, color = sample, linetype = batch)) + geom_line() +
+  theme_classic() + scale_color_npg() + labs(x = "transcript coordinate", y = "normalized coverage")
+```
+
+- SAQ7: From the corrected coverage plot, does the correction of fragment GC bias reduce the between batch variation? Referring to the work of Love, M. I et.al (2016), could you list some other sources of technical biases in RNA-Seq? What are the potential issues behind the assumptions made when normalizing the technical factors in NGS? (Recall the link between GC and RNA structures as we observed in project 1)
+
+- Your answer: Yes, the correction of fragment GC bias reduce the between batch variation a lot. Other bias include PCR enrichment, priming of reverse transcription by random hexamers, read errors introduced during the sequencing-by-synthesis reaction, and bias introduced by various methods of rRNA subtraction. Normalization relies on the assumptions a majority of gene expression are similar. For example, it relies on that the distributions of counts across different samples are similar when normalizing read coverage. Normalization often biases the outcome when it is used for samples with large differences in expressed populations.
+
+
+## Session Info
+```{r}
+sessionInfo()
+```
+
